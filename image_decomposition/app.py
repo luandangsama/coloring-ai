@@ -3,6 +3,7 @@ from io import BytesIO
 from PIL import Image
 from process_image import process_image, image_decomposition  # import your function
 from datetime import datetime
+import os
 app = Flask(__name__)
 
 @app.route("/")
@@ -35,4 +36,6 @@ def process():
     return send_file(buf, mimetype="image/png")
 
 if __name__ == "__main__":
+    if not os.path.exists("data"):
+        os.makedirs("data")
     app.run(debug=False, port=5001)
