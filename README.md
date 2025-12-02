@@ -9,5 +9,5 @@ npm install -g localtunnel
 When localtunnel is installed globally, just use the `lt` command to start the tunnel.
 
 ```
-lt --po
-
+lt --port 8080
+```
