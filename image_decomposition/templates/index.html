@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Python Image Processor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    body { margin: 0; padding: 20px; background: #f5f5f5; }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+    }
+    h1 { margin-top: 0; margin-bottom: 8px; font-size: 1.6rem; }
+    .subtitle { margin: 0 0 16px; color: #555; font-size: 0.95rem; }
+
+    .upload-section {
+      margin-bottom: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .drop-zone {
+      padding: 30px;
+      border: 2px dashed #999;
+      border-radius: 16px;
+      text-align: center;
+      background: #f8f8f8;
+      cursor: pointer;
+      transition: 0.2s border-color, 0.2s background;
+    }
+
+    .drop-zone.dragover {
+      border-color: #2563eb;
+      background: #eef4ff;
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .previews {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 16px;
+      margin-top: 10px;
+    }
+
+    .panel {
+      background: #fafafa;
+      border-radius: 12px;
+      padding: 12px;
+      border: 1px solid #e4e4e4;
+    }
+
+    .panel-title {
+      font-size: 0.9rem;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #444;
+    }
+
+    img {
+      max-width: 100%;
+      border-radius: 8px;
+      display: block;
+    }
+
+    .info {
+      font-size: 0.85rem;
+      color: #777;
+      margin-top: 4px;
+    }
+
+    button {
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: none;
+      cursor: pointer;
+      font-size: 0.9rem;
+      background: #111827;
+      color: #fff;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Python Image Processor</h1>
+    <p class="subtitle">Drag & drop or select an image, process it with Python, and see the result.</p>
+
+    <div class="upload-section">
+      <div id="dropZone" class="drop-zone">
+        <p><strong>Drag & Drop</strong> an image here<br>or <u>click to choose</u></p>
+        <input id="fileInput" type="file" accept="image/*" hidden />
+      </div>
+
+      <div class="controls">
+        <button id="processBtn" disabled>Process</button>
+        <span class="info" id="statusText">Choose an image to get started.</span>
+      </div>
+    </div>
+
+    <div class="previews">
+      <div class="panel">
+        <div class="panel-title">Original</div>
+        <img id="originalImage" alt="Original image" class="hidden" />
+      </div>
+      <div class="panel">
+        <div class="panel-title">Processed Image</div>
+        <img id="processedImage" alt="Processed image" class="hidden" />
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const dropZone = document.getElementById("dropZone");
+    const fileInput = document.getElementById("fileInput");
+    const processBtn = document.getElementById("processBtn");
+    const originalImage = document.getElementById("originalImage");
+    const processedImage = document.getElementById("processedImage");
+    const statusText = document.getElementById("statusText");
+
+    let currentFile = null;
+
+    // Click on drop zone → open file dialog
+    dropZone.addEventListener("click", () => {
+      fileInput.click();
+    });
+
+    // Drag over drop zone
+    dropZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropZone.classList.add("dragover");
+    });
+
+    dropZone.addEventListener("dragleave", () => {
+      dropZone.classList.remove("dragover");
+    });
+
+    // Drop file
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("dragover");
+
+      if (e.dataTransfer.files.length > 0) {
+        const file = e.dataTransfer.files[0];
+        handleFile(file);
+      }
+    });
+
+    // File selected via dialog
+    fileInput.addEventListener("change", (e) => {
+      if (e.target.files.length > 0) {
+        handleFile(e.target.files[0]);
+      }
+    });
+
+    // Shared logic to handle a new file
+    function handleFile(file) {
+      if (!file.type.startsWith("image/")) {
+        statusText.textContent = "Please select an image file.";
+        processBtn.disabled = true;
+        originalImage.classList.add("hidden");
+        processedImage.classList.add("hidden");
+        return;
+      }
+
+      currentFile = file;
+
+      const url = URL.createObjectURL(file);
+      originalImage.src = url;
+      originalImage.classList.remove("hidden");
+      processedImage.classList.add("hidden");
+
+      statusText.textContent = "Image ready. Click 'Process'.";
+      processBtn.disabled = false;
+    }
+
+    // Send to backend for processing
+    processBtn.addEventListener("click", () => {
+      if (!currentFile) return;
+
+      processBtn.disabled = true;
+      statusText.textContent = "Processing on server...";
+
+      const formData = new FormData();
+      formData.append("image", currentFile);
+
+      fetch("/process", {
+        method: "POST",
+        body: formData,
+      })
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error("Server error: " + res.status);
+          }
+          return res.blob();
+        })
+        .then((blob) => {
+          const url = URL.createObjectURL(blob);
+          processedImage.src = url;
+          processedImage.classList.remove("hidden");
+          statusText.textContent = "Done!";
+        })
+        .catch((err) => {
+          console.error(err);
+          statusText.textContent = "Error: " + err.message;
+        })
+        .finally(() => {
+          processBtn.disabled = false;
+        });
+    });
+  </script>
+</body>
+</html>
