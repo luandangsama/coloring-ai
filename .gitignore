@@ -10,3 +10,4 @@ wheels/
 .venv
 dummy.ipynb
 data/
+svgs/

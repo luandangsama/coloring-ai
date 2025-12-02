@@ -1,11 +1,16 @@
 from flask import Flask, request, send_file, render_template
 from io import BytesIO
 from PIL import Image
-from process_image import process_image, image_decomposition  # import your function
+from process_image import process_image, image_decomposition, image_to_svgs  # import your function
 from datetime import datetime
 import os
 import zipfile
+import numpy as np
+import cv2
 app = Flask(__name__)
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
 
 @app.route("/")
 def index():
@@ -21,12 +26,9 @@ def process():
         return "No file uploaded", 400
 
     img = Image.open(file.stream).convert("RGB")
-    ## save to a temporary location
-    temp_path = f"data/{td.strftime('%Y%m%d%H%M%S')}.png"
-    img.save(temp_path)
+    cv2_image = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
 
-    out_img = image_decomposition(temp_path)
-    out_img.save(f"data/{td.strftime('%Y%m%d%H%M%S')}_processed.png")
+    out_img = image_decomposition(cv2_image)
 
     # Save output to in-memory buffer
     buf = BytesIO()
@@ -38,49 +40,45 @@ def process():
 
 @app.route("/process-zip", methods=["POST"])
 def process_zip():
-    """
-    Returns a ZIP file containing:
-      - processed.png : the processed image
-      - report.txt    : some information about the image
-    """
+    td = datetime.now()
+    save_dir  = td.strftime('%Y%m%d%H%M')
+    os.makedirs(f"data/{save_dir}/svgs", exist_ok=True)
+
     file = request.files.get("image")
     if file is None:
         return "No file uploaded", 400
-
+    
     img = Image.open(file.stream).convert("RGB")
+    ## save to a temporary location
+    temp_path = f"data/{save_dir}/original.png"
+    img.save(temp_path)
 
-    # 🔧 Process image with your function
-    out_img = process_image(img)
+    cv2_image = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+    out_img = image_decomposition(cv2_image)
+    out_path = f"data/{save_dir}/decomposed.png"
+    out_img.save(out_path)
 
-    # 1) Get processed image bytes (PNG)
-    img_buf = BytesIO()
-    out_img.save(img_buf, format="PNG")
-    img_bytes = img_buf.getvalue()
+    output_dir = f"data/{save_dir}/svgs"
+    image_to_svgs(temp_path, output_dir)
 
-    # 2) Build a text report (replace with your real info)
-    info_lines = [
-        "Processed image report",
-        "----------------------",
-        f"Original size: {img.width}x{img.height}",
-        f"Processed size: {out_img.width}x{out_img.height}",
-        f"Mode: {out_img.mode}",
-    ]
-    report_text = "\n".join(info_lines)
-    report_bytes = report_text.encode("utf-8")
+    SVG_DIR = BASE_DIR / "data" / save_dir / "svgs"
+    svg_files = list(SVG_DIR.glob("*.svg"))
+    if not svg_files:
+        return "No SVG files found on server", 404
 
     # 3) Pack everything into a ZIP in memory
     zip_buf = BytesIO()
     with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("processed.png", img_bytes)
-        zf.writestr("report.txt", report_bytes)
-
+        for svg_path in svg_files:
+            # arcname controls the name inside the ZIP (no full path)
+            zf.write(svg_path, arcname=svg_path.name)
     zip_buf.seek(0)
 
     return send_file(
         zip_buf,
         mimetype="application/zip",
         as_attachment=True,
-        download_name="results.zip",
+        download_name=f"results_{save_dir}.zip",
     )
 
 if __name__ == "__main__":
