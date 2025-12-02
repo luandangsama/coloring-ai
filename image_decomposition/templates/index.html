@@ -5,18 +5,33 @@
   <title>Python Image Processor</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    * { box-sizing: border-box; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-    body { margin: 0; padding: 20px; background: #f5f5f5; }
+    * {
+      box-sizing: border-box;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    body {
+      margin: 0;
+      padding: 20px;
+      background: #f5f5f5;
+    }
     .container {
-      max-width: 900px;
+      max-width: 1000px;
       margin: 0 auto;
       background: #ffffff;
       border-radius: 16px;
       padding: 20px;
       box-shadow: 0 10px 30px rgba(0,0,0,0.08);
     }
-    h1 { margin-top: 0; margin-bottom: 8px; font-size: 1.6rem; }
-    .subtitle { margin: 0 0 16px; color: #555; font-size: 0.95rem; }
+    h1 {
+      margin-top: 0;
+      margin-bottom: 8px;
+      font-size: 1.6rem;
+    }
+    .subtitle {
+      margin: 0 0 16px;
+      color: #555;
+      font-size: 0.95rem;
+    }
 
     .upload-section {
       margin-bottom: 20px;
@@ -90,18 +105,27 @@
       color: #fff;
     }
 
+    button.secondary {
+      background: #4b5563;
+    }
+
     button:disabled {
       opacity: 0.5;
       cursor: not-allowed;
     }
 
-    .hidden { display: none; }
+    .hidden {
+      display: none;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Python Image Processor</h1>
-    <p class="subtitle">Drag & drop or select an image, process it with Python, and see the result.</p>
+    <p class="subtitle">
+      Drag & drop or select an image, see the processed result, and download a ZIP
+      containing the results.
+    </p>
 
     <div class="upload-section">
       <div id="dropZone" class="drop-zone">
@@ -110,7 +134,8 @@
       </div>
 
       <div class="controls">
-        <button id="processBtn" disabled>Process</button>
+        <button id="processBtn" disabled>Click to Process</button>
+        <button id="downloadZipBtn" class="secondary" disabled>Download Result</button>
         <span class="info" id="statusText">Choose an image to get started.</span>
       </div>
     </div>
@@ -120,8 +145,9 @@
         <div class="panel-title">Original</div>
         <img id="originalImage" alt="Original image" class="hidden" />
       </div>
+
       <div class="panel">
-        <div class="panel-title">Processed Image</div>
+        <div class="panel-title">Processed Image (Preview)</div>
         <img id="processedImage" alt="Processed image" class="hidden" />
       </div>
     </div>
@@ -131,6 +157,7 @@
     const dropZone = document.getElementById("dropZone");
     const fileInput = document.getElementById("fileInput");
     const processBtn = document.getElementById("processBtn");
+    const downloadZipBtn = document.getElementById("downloadZipBtn");
     const originalImage = document.getElementById("originalImage");
     const processedImage = document.getElementById("processedImage");
     const statusText = document.getElementById("statusText");
@@ -175,6 +202,7 @@
       if (!file.type.startsWith("image/")) {
         statusText.textContent = "Please select an image file.";
         processBtn.disabled = true;
+        downloadZipBtn.disabled = true;
         originalImage.classList.add("hidden");
         processedImage.classList.add("hidden");
         return;
@@ -187,16 +215,17 @@
       originalImage.classList.remove("hidden");
       processedImage.classList.add("hidden");
 
-      statusText.textContent = "Image ready. Click 'Process'.";
+      statusText.textContent = "Image ready. Click 'Preview Processed Image' or 'Download ZIP'.";
       processBtn.disabled = false;
+      downloadZipBtn.disabled = false;
     }
 
-    // Send to backend for processing
+    // Preview processed image using /process
     processBtn.addEventListener("click", () => {
       if (!currentFile) return;
 
       processBtn.disabled = true;
-      statusText.textContent = "Processing on server...";
+      statusText.textContent = "Processing image for preview...";
 
       const formData = new FormData();
       formData.append("image", currentFile);
@@ -207,7 +236,7 @@
       })
         .then((res) => {
           if (!res.ok) {
-            throw new Error("Server error: " + res.status);
+            throw new Error("Image server error: " + res.status);
           }
           return res.blob();
         })
@@ -215,14 +244,65 @@
           const url = URL.createObjectURL(blob);
           processedImage.src = url;
           processedImage.classList.remove("hidden");
-          statusText.textContent = "Done!";
+          statusText.textContent = "Preview updated.";
         })
         .catch((err) => {
           console.error(err);
-          statusText.textContent = "Error: " + err.message;
+          statusText.textContent = "Error (preview): " + err.message;
         })
         .finally(() => {
           processBtn.disabled = false;
+        });
+    });
+
+    // Download ZIP using /process-zip
+    downloadZipBtn.addEventListener("click", () => {
+      if (!currentFile) return;
+
+      downloadZipBtn.disabled = true;
+      statusText.textContent = "Preparing ZIP on server...";
+
+      const formData = new FormData();
+      formData.append("image", currentFile);
+
+      fetch("/process-zip", {
+        method: "POST",
+        body: formData,
+      })
+        .then((res) => {
+          if (!res.ok) {
+            throw new Error("ZIP server error: " + res.status);
+          }
+          return res.blob().then((blob) => ({ blob, res }));
+        })
+        .then(({ blob, res }) => {
+          // Try to use filename from headers, fallback to results.zip
+          let fileName = "results.zip";
+          const dispo = res.headers.get("Content-Disposition");
+          if (dispo && dispo.includes("filename=")) {
+            const match = dispo.match(/filename="?([^"]+)"?/);
+            if (match && match[1]) {
+              fileName = match[1];
+            }
+          }
+
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+
+          statusText.textContent = "ZIP download started.";
+        })
+        .catch((err) => {
+          console.error(err);
+          statusText.textContent = "Error (ZIP): " + err.message;
+        })
+        .finally(() => {
+          downloadZipBtn.disabled = false;
         });
     });
   </script>
