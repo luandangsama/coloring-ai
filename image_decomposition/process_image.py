@@ -131,7 +131,6 @@ def image_to_svgs(img_path, output_dir):
         contours, hierarchy = cv2.findContours(
             mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE
         )
-        print(len(contours), "contours found for label", label)
 
         subpaths = []
         for i, cnt in enumerate(contours):
