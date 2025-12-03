@@ -96,6 +96,7 @@ def image_to_svgs(img_path, output_dir):
     h, w = binary.shape
     closed_mask = np.zeros_like(binary, dtype=np.uint8)
     min_cc_area = 10
+    min_contour_area = 5.0
     area_count = 1
     for label in range(1, num_labels):
         ys, xs = np.where(labels == label)
@@ -128,26 +129,31 @@ def image_to_svgs(img_path, output_dir):
         # Find contours of this region
         # (Only external contour, we don't expect holes inside these areas)
         contours, hierarchy = cv2.findContours(
-            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+            mask, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE
         )
+        print(len(contours), "contours found for label", label)
 
-        if not contours:
+        subpaths = []
+        for i, cnt in enumerate(contours):
+            if cv2.contourArea(cnt) < min_contour_area:
+                continue
+
+            epsilon = 0.5
+            approx = cv2.approxPolyDP(cnt, epsilon, True)
+            d = contour_to_svg_path(approx)
+            if d is not None:
+                subpaths.append(d)
+
+        if not subpaths:
             continue
 
-        # Choose the biggest contour (just in case there are tiny fragments)
-        cnt = max(contours, key=cv2.contourArea)
+        # combine: each subpath is "M ... Z" already
+        d_all = " ".join(subpaths)
 
-        # Optional: simplify the contour to fewer points
-        epsilon = 0.5  # tweak for more/less detail
-        approx = cv2.approxPolyDP(cnt, epsilon, True)
-
-        path_d = contour_to_svg_path(approx)
-
-        # Build SVG text in the same style as cow_separate_9.svg
         svg_content = f'''<svg width="{w}" height="{h}" viewBox="0 0 {w} {h}" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="{path_d}" fill="white"/>
+<path d="{d_all}" fill="white" fill-rule="evenodd"/>
 </svg>
-    '''
+'''
 
         out_path = os.path.join(output_dir, f"area_{area_count}.svg")
         with open(out_path, "w", encoding="utf-8") as f:
